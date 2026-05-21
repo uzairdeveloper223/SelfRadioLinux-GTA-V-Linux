@@ -26,6 +26,23 @@ This modification bypasses the Rockstar audio pipeline entirely. By utilizing th
 
 ---
 
+## Screenshots
+
+### In-Game HUD
+
+<p align="center">
+  <img src="assets/s1.png" width="800"/>
+</p>
+
+### Menu (bottom center)
+
+<p align="center">
+  <img src="assets/s2.png" width="800"/>
+</p>
+
+
+---
+
 ## Prerequisites
 
 To run this mod, ensure you have the following files installed inside your Grand Theft Auto V main folder:
