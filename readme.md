@@ -28,13 +28,13 @@ This modification bypasses the Rockstar audio pipeline entirely. By utilizing th
 
 ## Screenshots
 
-### In-Game HUD
+### In-Game HUD (bottom center)
 
 <p align="center">
   <img src="assets/s1.png" width="800"/>
 </p>
 
-### Menu (bottom center)
+### Menu
 
 <p align="center">
   <img src="assets/s2.png" width="800"/>
