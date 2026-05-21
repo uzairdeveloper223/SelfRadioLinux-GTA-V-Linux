@@ -102,3 +102,45 @@ mcs -target:library -out:SelfRadioLinux.dll \
 - **NAudio** audio processing library by Mark Heath & contributors.
 - **NativeUI** UI menu framework by Guad.
 - Special thanks to the ScriptHookVDotNet developer community.
+
+---
+
+## License
+
+This project is licensed under the MIT License.  
+See the [LICENSE](LICENSE) file for full details.
+
+---
+
+## Disclaimer
+
+Please read the [DISCLAIMER.md](DISCLAIMER.md) file before using this project.
+
+---
+
+## Contributions
+
+Contributions, improvements, bug fixes, and feature suggestions are always welcome.
+
+If you would like to contribute:
+1. Fork the repository
+2. Create a new feature or fix branch
+3. Commit your changes
+4. Open a pull request
+
+Please try to follow the existing code style and keep commits clear and organized.
+
+---
+
+## Issue Reporting
+
+Feel free to report bugs, crashes, compatibility problems, or feature requests through the GitHub Issues page.
+
+When reporting an issue, include:
+- Your operating system and distribution
+- GTA V version
+- Proton/Wine version (if applicable)
+- Steps to reproduce the issue
+- Any crash logs or console output
+
+This helps improve compatibility and stability across different systems.
