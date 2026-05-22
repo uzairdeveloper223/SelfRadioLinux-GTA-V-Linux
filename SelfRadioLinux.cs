@@ -583,7 +583,7 @@ public class SelfRadioLinux : Script
             float fgX = bgX - (bgW / 2f) + (fgW / 2f);
             Function.Call(Hash.DRAW_RECT, fgX, bgY, fgW, bgH, _themeR, _themeG, _themeB, volAlpha);
             Function.Call(Hash.SET_TEXT_FONT, 0);
-            Function.Call(Hash.SET_TEXT_SCALE, 0f, 0.45f);
+            Function.Call(Hash.SET_TEXT_SCALE, 0f, 0.25f);
             Function.Call(Hash.SET_TEXT_COLOUR, 255, 255, 255, textAlpha);
             Function.Call(Hash.SET_TEXT_CENTRE, true);
             Function.Call(Hash._SET_TEXT_ENTRY, "STRING");
@@ -599,7 +599,7 @@ public class SelfRadioLinux : Script
                 shAlpha = (int)(200 * (shRemaining / 1000f));
             }
             Function.Call(Hash.SET_TEXT_FONT, 0);
-            Function.Call(Hash.SET_TEXT_SCALE, 0f, 0.22f);
+            Function.Call(Hash.SET_TEXT_SCALE, 0f, 0.47f);
             Function.Call(Hash.SET_TEXT_COLOUR, _statusColorR, _statusColorG, _statusColorB, shAlpha);
             Function.Call(Hash.SET_TEXT_CENTRE, true);
             Function.Call(Hash._SET_TEXT_ENTRY, "STRING");
