@@ -16,6 +16,9 @@ This modification bypasses the Rockstar audio pipeline entirely. By utilizing th
 
 - **Portability:** Instantly compatible across Windows, Linux, and Steam Deck.
 - **Playback Style Selector:** Choose between "Vehicle-Only Playback" (automatically pauses on foot, remembers exact track position per individual vehicle) or "Play Everywhere" (play music on foot seamlessly across any context).
+- **3D Exterior Audio (Positional Sound Engine):** When you step out of a vehicle while your music is still playing, playback does not stop. The audio continues to emit from the car's real-world position in the game world — dynamically panned left/right relative to your camera direction and smoothly attenuated with a distance-based falloff curve — simulating a genuine external car stereo. Re-entering the anchored vehicle seamlessly restores full-volume stereo playback.
+- **Live Distance HUD & Audible Range:** While music is broadcasting from an exterior vehicle, a dedicated on-screen indicator displays your real-time distance from the source ("XXm FROM THE CAR" / "OUT OF RANGE"). The maximum audible distance is fully configurable through the `MaxAudibleDistance` INI setting.
+- **Auto-Play on Vehicle Entry:** Optionally begins playing your custom music automatically the instant you enter any vehicle, so your radio is always live without pressing a single key.
 - **In-Game Search:** Filter your track list directly in-game using the GTA V native screen keyboard.
 - **Visual Progress Bar HUD:** Display a high-fidelity timeline HUD showing real-time elapsed and total track duration.
 - **Unified Visual Theme Manager:** Choose between five premium in-game color accents (Blue, Green, Red, Orange, and Purple) which dynamically update the volume bars, progress timelines, and HUD tags.

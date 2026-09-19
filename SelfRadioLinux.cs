@@ -6,6 +6,7 @@ using GTA.Native;
 using NativeUI;
 using NAudio.Wave;
 using System.Windows.Forms;
+using GTA.Math;
 
 public class SelfRadioLinux : Script
 {
@@ -20,6 +21,14 @@ public class SelfRadioLinux : Script
     private float _volume = 0.8f;
     private Random _rng = new Random();
     private volatile bool _trackFinished = false; 
+
+    private Positional3DSampleProvider _positional;
+    private int _audioAnchorVehicle = -1;
+    private GTA.Math.Vector3 _audioAnchorPos;
+    private bool _positionalAudioEnabled = true;
+    private float _refDistance = 3f;
+    private float _maxAudibleDistance = 60f;
+    private string _distanceHudText = "";
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
@@ -40,6 +49,7 @@ public class SelfRadioLinux : Script
     private bool _showProgressBar = true;
     private bool _speedVolumeScaling = false;
     private bool _vehicleOnlyPlayback = true;
+    private bool _autoPlayInVehicle = true;
     private bool _autoPaused = false;
 
     private int _themeIndex = 0; 
@@ -55,6 +65,8 @@ public class SelfRadioLinux : Script
     private UIMenuCheckboxItem _showProgressCheckbox;
     private UIMenuCheckboxItem _speedVolumeCheckbox;
     private UIMenuCheckboxItem _vehicleOnlyCheckbox;
+    private UIMenuCheckboxItem _autoPlayCheckbox;
+    private UIMenuCheckboxItem _positionalAudioCheckbox;
     private UIMenuListItem _themeListItem;
     private UIMenuItem _creditsItem;
 
@@ -122,6 +134,8 @@ public class SelfRadioLinux : Script
         _showProgressCheckbox = new UIMenuCheckboxItem("Show Progress Bar", _showProgressBar, "Displays a smooth timeline/progress bar under the centered HUD.");
         _speedVolumeCheckbox = new UIMenuCheckboxItem("Speed Auto-Volume", _speedVolumeScaling, "Slightly increases music volume as your vehicle goes faster to combat engine/road noise.");
         _vehicleOnlyCheckbox = new UIMenuCheckboxItem("Vehicle-Only Playback", _vehicleOnlyPlayback, "When enabled, music only plays inside vehicles and remembers progress per vehicle. When disabled, music plays everywhere.");
+        _autoPlayCheckbox = new UIMenuCheckboxItem("Auto-Play Music in Vehicle", _autoPlayInVehicle, "Automatically starts playing your custom music when you enter a vehicle.");
+        _positionalAudioCheckbox = new UIMenuCheckboxItem("3D Exterior Audio", _positionalAudioEnabled, "When you exit a vehicle while music is playing, the audio keeps playing from the car's real world position, panned and faded by distance, instead of just stopping.");
         var themesList = new List<object> { "Blue Theme", "Green Theme", "Red Theme", "Orange Theme", "Purple Theme" };
         _themeListItem = new UIMenuListItem("HUD Theme", themesList, _themeIndex, "Change the visual color accent of the HUD and bars.");
         _creditsItem = new UIMenuItem("Credits / Author", "Developed by Uzair Mughal. Github: uzairdeveloper223");
@@ -132,6 +146,8 @@ public class SelfRadioLinux : Script
         _settingsMenu.AddItem(_showProgressCheckbox);
         _settingsMenu.AddItem(_speedVolumeCheckbox);
         _settingsMenu.AddItem(_vehicleOnlyCheckbox);
+        _settingsMenu.AddItem(_autoPlayCheckbox);
+        _settingsMenu.AddItem(_positionalAudioCheckbox);
         _settingsMenu.AddItem(_themeListItem);
         _settingsMenu.AddItem(_creditsItem);
         _settingsMenu.OnCheckboxChange += (sender, item, checkedState) =>
@@ -175,6 +191,20 @@ public class SelfRadioLinux : Script
                 {
                     _currentVehicleHandle = -1;
                 }
+            }
+            else if (item == _autoPlayCheckbox)
+            {
+                _autoPlayInVehicle = checkedState;
+                ShowStatus(_autoPlayInVehicle ? "AUTO-PLAY IN VEHICLE: ON" : "AUTO-PLAY IN VEHICLE: OFF", 3000, _themeR, _themeG, _themeB);
+            }
+            else if (item == _positionalAudioCheckbox)
+            {
+                _positionalAudioEnabled = checkedState;
+                if (!_positionalAudioEnabled && _audioAnchorVehicle != -1)
+                {
+                    StopPlayback();
+                }
+                ShowStatus(_positionalAudioEnabled ? "3D EXTERIOR AUDIO: ON" : "3D EXTERIOR AUDIO: OFF", 3000, _themeR, _themeG, _themeB);
             }
             WriteDefaultConfig();
         };
@@ -280,6 +310,9 @@ public class SelfRadioLinux : Script
                 case "ShowProgress":     _showProgressBar = v == "1"; break;
                 case "SpeedVolume":      _speedVolumeScaling = v == "1"; break;
                 case "VehicleOnly":      _vehicleOnlyPlayback = v == "1"; break;
+                case "AutoPlayInVehicle": _autoPlayInVehicle = v == "1"; break;
+                case "PositionalAudio":  _positionalAudioEnabled = v == "1"; break;
+                case "MaxAudibleDistance": float.TryParse(v, out _maxAudibleDistance); break;
                 case "ThemeIndex":       int.TryParse(v, out _themeIndex); break;
                 case "CurrentIndex":     int.TryParse(v, out _currentIndex); break;
                 case "KeyMenu":          Enum.TryParse<Keys>(v, out _keyMenu);    break;
@@ -300,7 +333,6 @@ public class SelfRadioLinux : Script
         try
         {
             File.WriteAllText(_iniPath,
-                "; Self Radio Fixed - Config\n" +
                 "[Settings]\n" +
                 $"MusicDir={_musicDir}\n" +
                 $"Volume={_volume}\n" +
@@ -311,10 +343,12 @@ public class SelfRadioLinux : Script
                 $"ShowProgress={(_showProgressBar ? "1" : "0")}\n" +
                 $"SpeedVolume={(_speedVolumeScaling ? "1" : "0")}\n" +
                 $"VehicleOnly={(_vehicleOnlyPlayback ? "1" : "0")}\n" +
+                $"AutoPlayInVehicle={(_autoPlayInVehicle ? "1" : "0")}\n" +
+                $"PositionalAudio={(_positionalAudioEnabled ? "1" : "0")}\n" +
+                $"MaxAudibleDistance={_maxAudibleDistance}\n" +
                 $"ThemeIndex={_themeIndex}\n" +
                 $"CurrentIndex={_currentIndex}\n" +
                 "[Keys]\n" +
-                "; Use System.Windows.Forms.Keys names\n" +
                 $"KeyMenu={_keyMenu}\n" +
                 $"KeyPause={_keyPause}\n" +
                 $"KeyNext={_keyNext}\n" +
@@ -425,19 +459,27 @@ public class SelfRadioLinux : Script
     private void PlayTrack(int index)
     {
         if (_tracks.Count == 0) return;
+        int preservedAnchor = _audioAnchorVehicle;
         StopPlayback();
         _currentIndex = index;
         try
         {
             _output = new WaveOutEvent();
             _reader = new AudioFileReader(_tracks[index]) { Volume = _volume };
-            _output.Init(_reader);
+            _positional = new Positional3DSampleProvider(_reader);
+            var pcmProvider = new Float32ToPcm16Provider(_positional);
+            _output.Init(pcmProvider);
             _output.PlaybackStopped += OnPlaybackStopped;
             _output.Play();
             _isPlaying = true;
             _nowPlaying = SanitizeForGta(Path.GetFileNameWithoutExtension(_tracks[index]));
             _hudTimer   = Game.GameTime + 5000;
             UpdateSubtitle();
+            _audioAnchorVehicle = preservedAnchor;
+            if (_audioAnchorVehicle != -1)
+            {
+                UpdatePositionalAudio();
+            }
         }
         catch (Exception ex)
         {
@@ -460,6 +502,8 @@ public class SelfRadioLinux : Script
             try { _reader.Dispose(); } catch {}
             _reader = null;
         }
+        _positional = null;
+        _audioAnchorVehicle = -1;
     }
 
     private void TogglePause()
@@ -487,6 +531,71 @@ public class SelfRadioLinux : Script
         _volume = Math.Max(0f, Math.Min(1f, _volume + delta));
         if (_reader != null) _reader.Volume = _volume;
         _volTimer = Game.GameTime + 3000; 
+    }
+
+    private void UpdatePositionalAudio()
+    {
+        if (_positional == null) return;
+        if (_audioAnchorVehicle == -1)
+        {
+            _positional.Pan = 0f;
+            _positional.Gain = 1f;
+            _distanceHudText = "";
+            return;
+        }
+
+        GTA.Math.Vector3 sourcePos;
+        var anchorVeh = new Vehicle(_audioAnchorVehicle);
+        if (anchorVeh.Exists())
+        {
+            sourcePos = anchorVeh.Position;
+            _audioAnchorPos = sourcePos;
+        }
+        else
+        {
+            sourcePos = _audioAnchorPos;
+        }
+
+        GTA.Math.Vector3 listenerPos = GameplayCamera.Position;
+        GTA.Math.Vector3 forward = GameplayCamera.Direction;
+        forward.Z = 0f;
+        if (forward.LengthSquared() < 0.0001f)
+        {
+            forward = new GTA.Math.Vector3(0f, 1f, 0f);
+        }
+        forward.Normalize();
+        GTA.Math.Vector3 right = new GTA.Math.Vector3(forward.Y, -forward.X, 0f);
+
+        GTA.Math.Vector3 toSource = sourcePos - listenerPos;
+        float distance = toSource.Length();
+
+        float pan = 0f;
+        if (distance > 0.05f)
+        {
+            GTA.Math.Vector3 dir = toSource / distance;
+            pan = GTA.Math.Vector3.Dot(dir, right);
+            pan = Math.Max(-1f, Math.Min(1f, pan));
+        }
+
+        float gain;
+        if (distance <= _refDistance)
+        {
+            gain = 1f;
+        }
+        else if (distance >= _maxAudibleDistance)
+        {
+            gain = 0f;
+        }
+        else
+        {
+            float t = (distance - _refDistance) / (_maxAudibleDistance - _refDistance);
+            float linear = 1f - t;
+            gain = linear * linear;
+        }
+
+        _positional.Pan = pan;
+        _positional.Gain = gain;
+        _distanceHudText = gain > 0f ? $"{(int)distance}m FROM THE CAR" : "OUT OF RANGE";
     }
 
     private void ShowStatus(string text, int durationMs = 3000, int r = 255, int g = 255, int b = 255)
@@ -660,6 +769,18 @@ public class SelfRadioLinux : Script
         }
     }
 
+    private void DrawExteriorAudioHud()
+    {
+        if (_audioAnchorVehicle == -1 || !_isPlaying || string.IsNullOrEmpty(_distanceHudText)) return;
+        Function.Call(Hash.SET_TEXT_FONT, 0);
+        Function.Call(Hash.SET_TEXT_SCALE, 0f, 0.30f);
+        Function.Call(Hash.SET_TEXT_COLOUR, _themeR, _themeG, _themeB, 210);
+        Function.Call(Hash.SET_TEXT_CENTRE, true);
+        Function.Call(Hash._SET_TEXT_ENTRY, "STRING");
+        Function.Call(Hash._ADD_TEXT_COMPONENT_STRING, _distanceHudText);
+        Function.Call(Hash._DRAW_TEXT, 0.5f, 0.955f);
+    }
+
     private void OnPlaybackStopped(object sender, StoppedEventArgs e)
     {
         _trackFinished = true;
@@ -669,6 +790,7 @@ public class SelfRadioLinux : Script
     {
         _menuPool.ProcessMenus();
         DrawHud();
+        DrawExteriorAudioHud();
         if (Game.GameTime > _pruneTimer)
         {
             _pruneTimer = Game.GameTime + 30000;
@@ -687,47 +809,61 @@ public class SelfRadioLinux : Script
         }
         Ped playerPed = Game.Player.Character;
         bool inVehicle = playerPed != null && playerPed.IsInVehicle();
+        Vehicle curVeh = inVehicle ? playerPed.CurrentVehicle : null;
+        int vehHandle = curVeh != null ? curVeh.Handle : -1;
+
         if (_vehicleOnlyPlayback)
         {
             if (inVehicle)
             {
-                Vehicle curVeh = playerPed.CurrentVehicle;
-                if (curVeh != null)
+                if (vehHandle == _audioAnchorVehicle && _isPlaying)
                 {
-                    int vehHandle = curVeh.Handle;
-                    if (vehHandle != _currentVehicleHandle)
+                    _audioAnchorVehicle = -1;
+                    _currentVehicleHandle = vehHandle;
+                    if (_positional != null)
                     {
-                        if (_currentVehicleHandle != -1)
+                        _positional.Pan = 0f;
+                        _positional.Gain = 1f;
+                    }
+                    ShowStatus("BACK IN THE DRIVER SEAT", 2000, _themeR, _themeG, _themeB);
+                }
+                else if (vehHandle != _currentVehicleHandle)
+                {
+                    if (_currentVehicleHandle != -1)
+                    {
+                        SaveVehicleState(_currentVehicleHandle);
+                    }
+                    _currentVehicleHandle = vehHandle;
+                    _audioAnchorVehicle = -1;
+                    if (_vehicleHistory.ContainsKey(vehHandle))
+                    {
+                        var state = _vehicleHistory[vehHandle];
+                        if (state.WasPlaying || _autoPlayInVehicle)
                         {
-                            SaveVehicleState(_currentVehicleHandle);
-                        }
-                        _currentVehicleHandle = vehHandle;
-                        if (_vehicleHistory.ContainsKey(vehHandle))
-                        {
-                            var state = _vehicleHistory[vehHandle];
-                            if (state.WasPlaying)
+                            PlayTrack(state.TrackIndex);
+                            if (_reader != null)
                             {
-                                PlayTrack(state.TrackIndex);
-                                if (_reader != null)
-                                {
-                                    _reader.CurrentTime = state.CurrentTime;
-                                }
-                            }
-                            else
-                            {
-                                StopPlayback();
+                                _reader.CurrentTime = state.CurrentTime;
                             }
                         }
                         else
                         {
-                            if (_shuffle)
-                            {
-                                if (_tracks.Count > 0) PlayTrack(_rng.Next(_tracks.Count));
-                            }
-                            else
-                            {
-                                StopPlayback(); 
-                            }
+                            StopPlayback();
+                        }
+                    }
+                    else
+                    {
+                        if (_autoPlayInVehicle)
+                        {
+                            if (_tracks.Count > 0) PlayTrack(_shuffle ? _rng.Next(_tracks.Count) : _currentIndex);
+                        }
+                        else if (_shuffle)
+                        {
+                            if (_tracks.Count > 0) PlayTrack(_rng.Next(_tracks.Count));
+                        }
+                        else
+                        {
+                            StopPlayback(); 
                         }
                     }
                 }
@@ -737,26 +873,58 @@ public class SelfRadioLinux : Script
                 if (_currentVehicleHandle != -1)
                 {
                     SaveVehicleState(_currentVehicleHandle);
+                    if (_isPlaying && _positionalAudioEnabled)
+                    {
+                        _audioAnchorVehicle = _currentVehicleHandle;
+                        var exitedVeh = new Vehicle(_audioAnchorVehicle);
+                        if (exitedVeh.Exists())
+                        {
+                            _audioAnchorPos = exitedVeh.Position;
+                        }
+                        UpdatePositionalAudio();
+                    }
+                    else
+                    {
+                        StopPlayback();
+                    }
                     _currentVehicleHandle = -1;
-                    StopPlayback(); 
                 }
             }
         }
         else
         {
-            _currentVehicleHandle = -1; 
+            if (inVehicle)
+            {
+                if (vehHandle != _currentVehicleHandle)
+                {
+                    _currentVehicleHandle = vehHandle;
+                    if (_autoPlayInVehicle && !_isPlaying && _tracks.Count > 0)
+                    {
+                        PlayTrack(_shuffle ? _rng.Next(_tracks.Count) : _currentIndex);
+                    }
+                }
+            }
+            else
+            {
+                _currentVehicleHandle = -1; 
+            }
         }
+        
         if (_autoRadioOff && inVehicle)
         {
-            Vehicle curVeh = playerPed.CurrentVehicle;
-            if (curVeh != null)
+            Vehicle currentVehRadio = playerPed.CurrentVehicle;
+            if (currentVehRadio != null)
             {
                 string currentRadio = Function.Call<string>(Hash.GET_PLAYER_RADIO_STATION_NAME);
                 if (currentRadio != "OFF")
                 {
-                    Function.Call(Hash.SET_VEH_RADIO_STATION, curVeh, "OFF");
+                    Function.Call(Hash.SET_VEH_RADIO_STATION, currentVehRadio, "OFF");
                 }
             }
+        }
+        if (_isPlaying && _audioAnchorVehicle != -1)
+        {
+            UpdatePositionalAudio();
         }
         if (_isPlaying && _reader != null)
         {
@@ -764,10 +932,10 @@ public class SelfRadioLinux : Script
             {
                 if (playerPed != null && playerPed.IsInVehicle())
                 {
-                    Vehicle curVeh = playerPed.CurrentVehicle;
-                    if (curVeh != null)
+                    Vehicle curSpeedVeh = playerPed.CurrentVehicle;
+                    if (curSpeedVeh != null)
                     {
-                        float speed = curVeh.Speed; 
+                        float speed = curSpeedVeh.Speed; 
                         float volOffset = Math.Min(0.2f, (speed / 40f) * 0.2f);
                         _reader.Volume = Math.Min(1f, _volume + volOffset);
                     }
@@ -855,6 +1023,101 @@ public class SelfRadioLinux : Script
             _reader.CurrentTime = targetTime;
             _hudTimer = Game.GameTime + 5000; 
             ShowStatus("-5 SECONDS", 2000, _themeR, _themeG, _themeB);
+        }
+    }
+    private class Positional3DSampleProvider : ISampleProvider
+    {
+        private readonly ISampleProvider _source;
+        private readonly int _sourceChannels;
+        private float[] _sourceBuffer = new float[0];
+
+        public volatile float Pan = 0f;
+        public volatile float Gain = 1f;
+
+        public WaveFormat WaveFormat { get; private set; }
+
+        public Positional3DSampleProvider(ISampleProvider source)
+        {
+            _source = source;
+            _sourceChannels = Math.Max(1, source.WaveFormat.Channels);
+            WaveFormat = WaveFormat.CreateIeeeFloatWaveFormat(source.WaveFormat.SampleRate, 2);
+        }
+
+        public int Read(float[] buffer, int offset, int count)
+        {
+            int framesRequested = count / 2;
+            int sourceSamplesNeeded = framesRequested * _sourceChannels;
+            if (_sourceBuffer.Length < sourceSamplesNeeded)
+            {
+                _sourceBuffer = new float[sourceSamplesNeeded];
+            }
+
+            int sourceSamplesRead = _source.Read(_sourceBuffer, 0, sourceSamplesNeeded);
+            int framesRead = sourceSamplesRead / _sourceChannels;
+
+            float pan = Pan;
+            float gain = Gain;
+            double angle = (pan + 1.0) * (Math.PI / 4.0);
+            float leftGain = (float)Math.Cos(angle) * gain;
+            float rightGain = (float)Math.Sin(angle) * gain;
+
+            for (int i = 0; i < framesRead; i++)
+            {
+                float mono;
+                if (_sourceChannels == 1)
+                {
+                    mono = _sourceBuffer[i];
+                }
+                else
+                {
+                    int baseIdx = i * _sourceChannels;
+                    float sum = 0f;
+                    for (int ch = 0; ch < _sourceChannels; ch++)
+                    {
+                        sum += _sourceBuffer[baseIdx + ch];
+                    }
+                    mono = sum / _sourceChannels;
+                }
+                buffer[offset + i * 2]     = mono * leftGain;
+                buffer[offset + i * 2 + 1] = mono * rightGain;
+            }
+
+            return framesRead * 2;
+        }
+    }
+    private class Float32ToPcm16Provider : IWaveProvider
+    {
+        private readonly ISampleProvider _source;
+        private float[] _sourceBuffer = new float[0];
+
+        public WaveFormat WaveFormat { get; private set; }
+
+        public Float32ToPcm16Provider(ISampleProvider source)
+        {
+            _source = source;
+            WaveFormat = new WaveFormat(source.WaveFormat.SampleRate, 16, source.WaveFormat.Channels);
+        }
+
+        public int Read(byte[] buffer, int offset, int count)
+        {
+            int samplesRequested = count / 2;
+            if (_sourceBuffer.Length < samplesRequested)
+            {
+                _sourceBuffer = new float[samplesRequested];
+            }
+
+            int samplesRead = _source.Read(_sourceBuffer, 0, samplesRequested);
+            for (int i = 0; i < samplesRead; i++)
+            {
+                float sample = _sourceBuffer[i];
+                if (sample > 1f) sample = 1f;
+                else if (sample < -1f) sample = -1f;
+                short pcm = (short)(sample * short.MaxValue);
+                buffer[offset + i * 2]     = (byte)(pcm & 0xFF);
+                buffer[offset + i * 2 + 1] = (byte)((pcm >> 8) & 0xFF);
+            }
+
+            return samplesRead * 2;
         }
     }
 }
