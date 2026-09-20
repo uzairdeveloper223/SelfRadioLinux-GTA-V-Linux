@@ -120,9 +120,9 @@ public class SelfRadioLinux : Script
     private Keys _keyShuffle = Keys.OemSemicolon;
     private Keys _keySeekForward = Keys.OemPeriod;
     private Keys _keySeekBackward = Keys.Oemcomma;
-    private Keys _keyRepeat = Keys.R;
-    private Keys _keyFavorite = Keys.F;
-    private Keys _keyVisualizer = Keys.V;
+    private Keys _keyRepeat = Keys.B;
+    private Keys _keyFavorite = Keys.N;
+    private Keys _keyVisualizer = Keys.M;
 
     private string _scriptsDir;
     private string _iniPath;
@@ -327,10 +327,10 @@ public class SelfRadioLinux : Script
 
     private string NormalizePath(string path)
     {
-        if (string.IsNullOrEmpty(path)) return path;
-        string result = path.Replace('\\', '/');
-        while (result.Contains("//")) result = result.Replace("//", "/");
-        return result.TrimEnd('/');
+    	if (string.IsNullOrEmpty(path)) return path;
+    	string result = path.Replace('\\', '/');
+    	while (result.Contains("//")) result = result.Replace("//", "/");
+    	return result.TrimEnd(new char[] { '/' });
     }
 
     private bool IsAtMusicRoot()
